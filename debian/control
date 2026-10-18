@@ -1,23 +1,24 @@
 Source: glauth
+Standards-Version: 4.7.4
 Maintainer: Dato Simó <dato@net.com.org.es>
 Section: golang
-Priority: optional
 Build-Depends:
- debhelper-compat (= 13),
+ debhelper-compat (= 14),
  dh-golang,
  golang-any,
-Standards-Version: 4.6.0
 Homepage: https://github.com/glauth/glauth
 Rules-Requires-Root: no
 XS-Go-Import-Path: github.com/glauth/glauth
 
 Package: glauth-binary-dist
-Provides: glauth
-Conflicts: glauth
 Architecture: amd64
 Depends:
  ${misc:Depends},
  ${shlibs:Depends},
+Conflicts:
+ glauth,
+Provides:
+ glauth,
 Description: A lightweight LDAP server for development or home use (program)
  Go-lang LDAP Authentication (GLAuth) is a secure, easy-to-use, LDAP server
  with configurable backends.
