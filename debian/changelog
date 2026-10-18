@@ -1,3 +1,17 @@
+glauth (2.5.4-1~exp1) experimental; urgency=medium
+
+  * New upstream release.
+  * debian/gbp.conf: add options and instructions for import-orig.
+  * debian/watch: switch to git mode and version 5.
+  * Automated fixes by cme.
+  * Adjust packaging for building from source. But requiring internet
+    connection to download dependencies.
+  * tests: update rules and workarounds. Replace source patch with newly
+    supported envvar, drop now unnneded oathtool dependency.
+  * debian/rules: start & enable systemd service.
+
+ -- Martina Ferrari <tina@debian.org>  Sun, 18 Oct 2026 16:43:13 +0000
+
 glauth (2.3.2-0~exp7) experimental; urgency=low
 
   * Add [Install] section to glauth.service, but do not enable/start it.
