@@ -117,10 +117,12 @@ func (h ldapHandler) Bind(bindDN, bindSimplePw string, conn net.Conn) (result ld
 		lowerBindDN := strings.ToLower(bindDN)
 		baseDN := strings.ToLower("," + h.backend.BaseDN)
 		parts := strings.Split(strings.TrimSuffix(lowerBindDN, baseDN), ",")
-		userName := strings.TrimPrefix(parts[0], h.backend.NameFormat+"=")
+		userName := strings.TrimPrefix(parts[0], h.backend.NameFormatAsArray[0]+"=")
 
 		validotp := false
 
+		// Local records augment proxy authentication with OTP/YubiKey checks;
+		// password authentication remains delegated to the upstream LDAP server.
 		// Find the user
 		// We are going to go through all backends and ask
 		// until we find our user or die of boredom.
@@ -210,6 +212,20 @@ func (h ldapHandler) Search(boundDN string, searchReq ldap.SearchRequest, conn n
 		stats.Frontend.Add("search_ldapSession_errors", 1)
 		return ldap.ServerSearchResult{ResultCode: ldap.LDAPResultOperationsError}, nil
 	}
+	/*
+	   delete_idx := -1
+	   pagingSize := uint32(0)
+	   for idx, control := range searchReq.Controls {
+	       if control.GetControlType() == ldap.ControlTypePaging {
+	           fmt.Println(control.GetControlType())
+	           pagingSize = control.(*ldap.ControlPaging).PagingSize
+	           delete_idx = idx
+	       }
+	   }
+	   if delete_idx >= 0 {
+	       searchReq.Controls = append(searchReq.Controls[:delete_idx], searchReq.Controls[delete_idx+1:]...)
+	   }
+	*/
 	search := ldap.NewSearchRequest(
 		searchReq.BaseDN,
 		searchReq.Scope,
@@ -223,6 +239,15 @@ func (h ldapHandler) Search(boundDN string, searchReq ldap.SearchRequest, conn n
 	)
 
 	h.log.Debug().Interface("request", search).Msg("Search request to backend")
+	/*
+			var sr *ldap.SearchResult
+			if pagingSize > 0 {
+			    fmt.Printf("Searching with page size == %d\n", pagingSize)
+		        sr, err = s.ldap.SearchWithPaging(search, pagingSize)
+		    } else {
+		        sr, err = s.ldap.Search(search)
+		    }
+	*/
 	sr, err := s.ldap.Search(search)
 	h.log.Debug().Interface("result", sr).Msg("Backend Search result")
 
@@ -286,9 +311,10 @@ func (h ldapHandler) Search(boundDN string, searchReq ldap.SearchRequest, conn n
 	}
 
 	ssr := ldap.ServerSearchResult{
-		Entries:   sr.Entries,
-		Referrals: sr.Referrals,
-		Controls:  sr.Controls,
+		Entries:    sr.Entries,
+		Referrals:  sr.Referrals,
+		Controls:   sr.Controls,
+		ResultCode: ldap.LDAPResultSuccess,
 	}
 	h.log.Debug().Interface("result", ssr).Msg("Frontend Search result")
 	if err != nil {

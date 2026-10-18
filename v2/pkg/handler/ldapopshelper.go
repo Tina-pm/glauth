@@ -65,6 +65,10 @@ func NewLDAPOpsHelper(tracer trace.Tracer) LDAPOpsHelper {
 	return helper
 }
 
+func isUnauthenticatedSimpleBind(bindDN, bindSimplePw string) bool {
+	return bindDN != "" && bindSimplePw == ""
+}
+
 func (l LDAPOpsHelper) Bind(ctx context.Context, h LDAPOpsHandler, bindDN, bindSimplePw string, conn net.Conn) (resultCode ldap.LDAPResultCode, err error) {
 	ctx, span := l.tracer.Start(ctx, "handler.LDAPOpsHelper.Bind")
 	defer span.End()
@@ -86,9 +90,22 @@ func (l LDAPOpsHelper) Bind(ctx context.Context, h LDAPOpsHandler, bindDN, bindS
 		return ldap.LDAPResultSuccess, nil
 	}
 
+	// A non-empty DN with an empty password is LDAP's unauthenticated bind
+	// mechanism. It must not establish the named user's authorization state.
+	if isUnauthenticatedSimpleBind(bindDN, bindSimplePw) {
+		h.GetLog().Info().Str("binddn", bindDN).Str("src", conn.RemoteAddr().String()).Msg("unauthenticated bind rejected")
+		return ldap.LDAPResultUnwillingToPerform, nil
+	}
+
 	user, ldapcode := l.findUser(ctx, h, bindDN, true /* checkGroup */)
 	if ldapcode != ldap.LDAPResultSuccess {
 		return ldapcode, nil
+	}
+
+	// a disabled account must never authenticate, on any backend
+	if user.Disabled {
+		h.GetLog().Info().Str("binddn", bindDN).Str("src", conn.RemoteAddr().String()).Msg("Bind attempt on disabled account")
+		return ldap.LDAPResultInvalidCredentials, nil
 	}
 
 	validotp := false
@@ -172,6 +189,15 @@ func (l LDAPOpsHelper) Bind(ctx context.Context, h LDAPOpsHandler, bindDN, bindS
 	// Then ensure the OTP is valid before checking
 	if !validotp {
 		h.GetLog().Info().Str("binddn", bindDN).Str("src", conn.RemoteAddr().String()).Msg("invalid OTP token")
+		return ldap.LDAPResultInvalidCredentials, nil
+	}
+
+	// Reaching this point without a configured primary password verifier must
+	// not be treated as successful authentication. App-password matches and
+	// custom authentication return above when they succeed.
+	if user.PassBcrypt == "" && user.PassSHA256 == "" {
+		h.GetLog().Info().Str("binddn", bindDN).Str("src", conn.RemoteAddr().String()).Msg("invalid credentials")
+		l.maybePutInTimeout(ctx, h, conn, true)
 		return ldap.LDAPResultInvalidCredentials, nil
 	}
 
@@ -359,6 +385,7 @@ func (l LDAPOpsHelper) searchMaybeRootDSEQuery(ctx context.Context, h LDAPOpsHan
 	// unfortunately, objectClass is not to be included so we will respect that
 	// attrs = append(attrs, &ldap.EntryAttribute{Name: "objectClass", Values: []string{"*"}})
 	attrs = append(attrs, &ldap.EntryAttribute{Name: "supportedSASLMechanisms", Values: []string{}})
+	//attrs = append(attrs, &ldap.EntryAttribute{Name: "supportedSASLMechanisms", Values: []string{"GSSAPI", "PLAIN", "EXTERNAL"}})
 	attrs = append(attrs, &ldap.EntryAttribute{Name: "supportedLDAPVersion", Values: []string{"3"}})
 	attrs = append(attrs, &ldap.EntryAttribute{Name: "supportedControl", Values: []string{}})
 	attrs = append(attrs, &ldap.EntryAttribute{Name: "supportedCapabilities", Values: []string{}})
@@ -659,10 +686,10 @@ func (l LDAPOpsHelper) findUser(ctx context.Context, h LDAPOpsHandler, bindDN st
 		groupName := ""
 		userName := ""
 		if len(parts) == 1 {
-			userName = strings.TrimPrefix(parts[0], h.GetBackend().NameFormat+"=")
+			userName = strings.TrimPrefix(parts[0], h.GetBackend().NameFormatAsArray[0]+"=")
 		} else if len(parts) == 2 || (len(parts) == 3 && parts[2] == "ou=users") {
-			userName = strings.TrimPrefix(parts[0], h.GetBackend().NameFormat+"=")
-			groupName = strings.TrimPrefix(parts[1], h.GetBackend().GroupFormat+"=")
+			userName = strings.TrimPrefix(parts[0], h.GetBackend().NameFormatAsArray[0]+"=")
+			groupName = strings.TrimPrefix(parts[1], h.GetBackend().GroupFormatAsArray[0]+"=")
 		} else {
 			h.GetLog().Info().Str("binddn", bindDN).Int("numparts", len(parts)).Msg("BindDN should have only one or two parts")
 			for _, part := range parts {
@@ -702,6 +729,7 @@ func (l LDAPOpsHelper) findUser(ctx context.Context, h LDAPOpsHandler, bindDN st
 }
 
 func (l LDAPOpsHelper) checkCapability(ctx context.Context, user config.User, action string, objects []string) bool {
+	// User-level?
 	for _, capability := range user.Capabilities {
 		if capability.Action == action {
 			for _, object := range objects {

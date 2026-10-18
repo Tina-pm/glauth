@@ -24,6 +24,22 @@ echo "Fixing CI_BUILD_DIR"
 
 # This script requires that "$CI_BUILD_DIR" is set to the repo root
 
+GOOS="$(go env GOOS)"
+GOARCH="$(go env GOARCH)"
+if [[ "$GOARCH" = "arm" ]]; then
+	DIST_ARCH="arm-$(go env GOARM)"
+else
+	DIST_ARCH="$GOARCH"
+fi
+GLAUTH_BINARY="$CI_BUILD_DIR/bin/$GOOS$GOARCH/glauth"
+if [[ ! -x "$GLAUTH_BINARY" ]]; then
+	GLAUTH_BINARY="$CI_BUILD_DIR/bin/glauth-$GOOS-$DIST_ARCH"
+fi
+if [[ ! -x "$GLAUTH_BINARY" ]]; then
+	echo "Unable to find a runnable GLAuth binary: $GLAUTH_BINARY"
+	exit 1
+fi
+
 # Ensure ldap utils are installed (for example - when running this outside of CI)
 if [[ ! `which ldapsearch` ]]; then
 	sudo apt-get -qq update && sudo apt-get -qq install -y ldap-utils || exit 1;
@@ -33,14 +49,14 @@ fi
 echo "";
 echo ""
 echo "Version string of tested binary:"
-"$CI_BUILD_DIR/bin/linuxamd64/glauth" --version
+"$GLAUTH_BINARY" --version
 echo ""
 
 # Start in background, capture PID
-"$CI_BUILD_DIR/bin/linuxamd64/glauth" -c "$CI_BUILD_DIR/scripts/ci/test-config.cfg" &> /dev/null &
+"$GLAUTH_BINARY" -c "$CI_BUILD_DIR/scripts/ci/test-config.cfg" &> /dev/null &
 
 # Use this instead to see glauth logs while running
-# "$CI_BUILD_DIR/bin/linuxamd64/glauth" -c "$CI_BUILD_DIR/scripts/ci/test-config.cfg" &
+# "$CI_BUILD_DIR/bin/$(go env GOOS)$(go env GOARCH)/glauth" -c "$CI_BUILD_DIR/scripts/ci/test-config.cfg" &
 glauthPid="$!"
 
 echo "Running glauth at PID=$glauthPid"

@@ -179,11 +179,13 @@ func parseConfigFile(configFileLocation string, args map[string]interface{}) (*c
 	// Patch with default values where not specified
 	for i := range cfg.Backends {
 		if cfg.Backends[i].NameFormat == "" {
-			cfg.Backends[i].NameFormat = "cn"
+			cfg.Backends[i].NameFormat = "cn,uid"
 		}
+		cfg.Backends[i].NameFormatAsArray = strings.Split(cfg.Backends[i].NameFormat, ",")
 		if cfg.Backends[i].GroupFormat == "" {
-			cfg.Backends[i].GroupFormat = "ou"
+			cfg.Backends[i].GroupFormat = "ou,cn"
 		}
+		cfg.Backends[i].GroupFormatAsArray = strings.Split(cfg.Backends[i].GroupFormat, ",")
 		if cfg.Backends[i].SSHKeyAttr == "" {
 			cfg.Backends[i].SSHKeyAttr = "sshPublicKey"
 		}
@@ -221,9 +223,7 @@ func usersCustomAttributes(location string, config *config.Config) {
 			x := make(map[string]interface{})
 
 			for _, attribute := range user.CustomAttributes {
-				err := md.PrimitiveDecode(attribute, x)
-
-				fmt.Println(err, x)
+				_ = md.PrimitiveDecode(attribute, x)
 
 				for k, v := range x {
 
@@ -386,12 +386,46 @@ func validateConfig(cfg *config.Config) (*config.Config, error) {
 
 	if cfg.LDAPS.Enabled {
 		// LDAPS enabled - verify requirements (cert, key, listen)
-		if len(cfg.LDAPS.Cert) == 0 || len(cfg.LDAPS.Key) == 0 {
-			return cfg, fmt.Errorf("LDAPS was enabled but no certificate or key were specified: please disable LDAPS or use the 'cert' and 'key' options")
-		}
-
 		if len(cfg.LDAPS.Listen) == 0 {
 			return cfg, fmt.Errorf("no LDAPS bind address was specified: please disable LDAPS or use the 'listen' option")
+		}
+
+		if cfg.LDAPS.Cert == "" && cfg.LDAPS.CertPath != "" {
+			byteData, err := os.ReadFile(cfg.LDAPS.CertPath)
+			if err != nil {
+				return cfg, fmt.Errorf("unable to read TLS certificate file")
+			}
+			cfg.LDAPS.Cert = string(byteData)
+		}
+
+		if cfg.LDAPS.Key == "" && cfg.LDAPS.KeyPath != "" {
+			byteData, err := os.ReadFile(cfg.LDAPS.KeyPath)
+			if err != nil {
+				return cfg, fmt.Errorf("unable to read TLS key file")
+			}
+			cfg.LDAPS.Key = string(byteData)
+		}
+
+		// Ugly wart for backward compatibility
+		// In the olden times, we would simply say "please read from this file"
+		// This is now the role of the Path files.
+		if !strings.HasPrefix(cfg.LDAPS.Cert, "-----") {
+			byteData, err := os.ReadFile(cfg.LDAPS.Cert)
+			if err != nil {
+				return cfg, fmt.Errorf("unable to read TLS certificate file")
+			}
+			cfg.LDAPS.Cert = string(byteData)
+		}
+		if !strings.HasPrefix(cfg.LDAPS.Key, "-----") {
+			byteData, err := os.ReadFile(cfg.LDAPS.Key)
+			if err != nil {
+				return cfg, fmt.Errorf("unable to read TLS key file")
+			}
+			cfg.LDAPS.Key = string(byteData)
+		}
+
+		if cfg.LDAPS.Cert == "" || cfg.LDAPS.Key == "" {
+			return cfg, fmt.Errorf("LDAPS was enabled but no certificate or key were specified: please disable LDAPS or use the 'cert'/'key' or 'certpath'/'keypath' options")
 		}
 	}
 
@@ -401,24 +435,27 @@ func validateConfig(cfg *config.Config) (*config.Config, error) {
 			return cfg, fmt.Errorf("no LDAP bind address was specified: please disable LDAP or use the 'listen' option")
 		}
 
-		if cfg.LDAP.TLS && cfg.LDAP.TLSCert == "" && cfg.LDAP.TLSCertPath != "" {
-			byteData, err := os.ReadFile(cfg.LDAP.TLSCertPath)
-			cfg.LDAP.TLSCert = string(byteData)
+		if cfg.LDAP.TLS {
+			if cfg.LDAP.TLSCert == "" && cfg.LDAP.TLSCertPath != "" {
+				byteData, err := os.ReadFile(cfg.LDAP.TLSCertPath)
+				if err != nil {
+					return cfg, fmt.Errorf("unable to read TLS certificate file")
+				}
+				cfg.LDAP.TLSCert = string(byteData)
+			}
 
-			if err != nil {
-				return cfg, fmt.Errorf("unable to read TLS certificate file")
+			if cfg.LDAP.TLSKey == "" && cfg.LDAP.TLSKeyPath != "" {
+				byteData, err := os.ReadFile(cfg.LDAP.TLSKeyPath)
+				if err != nil {
+					return cfg, fmt.Errorf("unable to read TLS key file")
+				}
+				cfg.LDAP.TLSKey = string(byteData)
+			}
+
+			if cfg.LDAP.TLSCert == "" || cfg.LDAP.TLSKey == "" {
+				return cfg, fmt.Errorf("StartTLS was enabled but no certificate or key were specified: please disable StartTLS or use the 'tlscert'/'tlskey' or 'tlscertpath'/'tlskeypath' options")
 			}
 		}
-
-		if cfg.LDAP.TLS && cfg.LDAP.TLSKey == "" && cfg.LDAP.TLSKeyPath != "" {
-			byteData, err := os.ReadFile(cfg.LDAP.TLSKeyPath)
-			cfg.LDAP.TLSKey = string(byteData)
-
-			if err != nil {
-				return cfg, fmt.Errorf("unable to read TLS key file")
-			}
-		}
-
 	}
 
 	//spew.Dump(cfg)
@@ -430,8 +467,9 @@ func validateConfig(cfg *config.Config) (*config.Config, error) {
 		case "ldap":
 		case "owncloud":
 		case "plugin":
+		case "embed":
 		default:
-			return cfg, fmt.Errorf("invalid backend %s - must be 'config', 'ldap', 'owncloud' or 'plugin'", cfg.Backends[i].Datastore)
+			return cfg, fmt.Errorf("invalid backend %s - must be 'config', 'ldap', 'owncloud', 'plugin' or 'embed", cfg.Backends[i].Datastore)
 		}
 	}
 
