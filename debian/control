@@ -10,7 +10,6 @@ Build-Depends:
  ca-certificates,
  golang-any,
  ldap-utils <!nocheck>,
- oathtool <!nocheck>,
 Homepage: https://github.com/glauth/glauth
 XS-Go-Import-Path: github.com/glauth/glauth
 Testsuite: autopkgtest-pkg-go

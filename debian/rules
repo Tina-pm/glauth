@@ -7,6 +7,11 @@ export DH_GOLANG_INSTALL_EXTRA = \
   v2/sample-ldap-injection.cfg \
   v2/sample-owncloud.cfg \
   v2/sample-simple.cfg
+export GLAUTH_TEST_BINARY = $(CURDIR)/_build/bin/glauth
+
+# Allow downloading dependencies.
+export GO111MODULE = on
+export GOPROXY = https://proxy.golang.org,direct
 
 # Copied from Makefile.
 TRIM_FLAGS ?= -trimpath
@@ -14,9 +19,6 @@ BUILD_VARS ?= -s -w
 BUILD_TAGS ?= noembed
 BUILDFLAGS = ${TRIM_FLAGS} -tags "${BUILD_TAGS}" -ldflags "${BUILD_VARS}" \
 	     -buildvcs
-
-export GO111MODULE = on
-export GOPROXY = https://proxy.golang.org,direct
 
 %:
 	dh $@ --buildsystem=golang
