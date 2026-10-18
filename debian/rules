@@ -1,7 +1,42 @@
 #!/usr/bin/make -f
 
+export DH_GOLANG_BUILDPKG = github.com/glauth/glauth/v2
+export DH_GOLANG_EXCLUDES =
+export DH_GOLANG_INSTALL_EXTRA = \
+  v2/sample-ldap.cfg \
+  v2/sample-ldap-injection.cfg \
+  v2/sample-owncloud.cfg \
+  v2/sample-simple.cfg
+
+# Copied from Makefile.
+TRIM_FLAGS ?= -trimpath
+BUILD_VARS ?= -s -w
+BUILD_TAGS ?= noembed
+BUILDFLAGS = ${TRIM_FLAGS} -tags "${BUILD_TAGS}" -ldflags "${BUILD_VARS}" \
+	     -buildvcs
+
+export GO111MODULE = on
+export GOPROXY = https://proxy.golang.org,direct
+
 %:
-	dh $@
+	dh $@ --buildsystem=golang
+
+override_dh_auto_build:
+	dh_auto_build -- $(BUILDFLAGS)
+
+override_dh_auto_test: DH_GOLANG_EXCLUDES += internal/monitoring
+override_dh_auto_test:
+	openssl req -x509 -newkey rsa:4096 \
+	  -days 365 -nodes -subj '/CN=localhost' \
+	  -keyout v2/glauth.key -out v2/glauth.crt
+	dh_auto_test
+
+override_dh_auto_install:
+	dh_auto_install -- --no-source
+
+override_dh_installchangelogs:
+	dh_installchangelogs
+	dh_installchangelogs -pglauth v2/CHANGELOG.md
 
 override_dh_installsystemd:
-	dh_installsystemd --name glauth --no-enable --no-start
+	dh_installsystemd --no-enable --no-start

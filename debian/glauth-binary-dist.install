@@ -1,3 +1,0 @@
-#!/usr/bin/dh-exec
-
-[linux-amd64] binaries/glauth-linux-amd64 => usr/bin/glauth

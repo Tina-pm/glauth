@@ -1,25 +1,40 @@
 Source: glauth
 Standards-Version: 4.7.4
 Maintainer: Dato Simó <dato@net.com.org.es>
+Uploaders:
+ Martina Ferrari <tina@debian.org>,
 Section: golang
 Build-Depends:
  debhelper-compat (= 14),
  dh-golang,
+ ca-certificates,
  golang-any,
+ ldap-utils <!nocheck>,
+ oathtool <!nocheck>,
 Homepage: https://github.com/glauth/glauth
-Rules-Requires-Root: no
 XS-Go-Import-Path: github.com/glauth/glauth
+Testsuite: autopkgtest-pkg-go
+Vcs-Browser: https://github.com/Tina-pm/glauth
+Vcs-Git: https://github.com/Tina-pm/glauth.git
 
 Package: glauth-binary-dist
-Architecture: amd64
 Depends:
- ${misc:Depends},
- ${shlibs:Depends},
-Conflicts:
  glauth,
-Provides:
- glauth,
-Description: A lightweight LDAP server for development or home use (program)
+Architecture: all
+Section: oldlibs
+Description: transitional package
+ This is a transitional package. It can safely be removed.
+
+Package: glauth
+Architecture: any
+Depends:
+ adduser,
+Static-Built-Using: ${misc:Static-Built-Using},
+Replaces:
+ glauth-binary-dist (<< 2.5.4-0~),
+Breaks:
+ glauth-binary-dist (<< 2.5.4-0~),
+Description: Lightweight LDAP server for development or home use (program)
  Go-lang LDAP Authentication (GLAuth) is a secure, easy-to-use, LDAP server
  with configurable backends.
  .
@@ -36,5 +51,3 @@ Description: A lightweight LDAP server for development or home use (program)
     proxy to existing LDAP servers.
   * Two Factor Authentication (transparent to applications).
   * Multiple backends can be chained to inject features.
- .
- THIS PACKAGE CONTAINS A PRE-COMPILED BINARY.
