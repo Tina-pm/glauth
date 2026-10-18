@@ -39,6 +39,3 @@ override_dh_auto_install:
 override_dh_installchangelogs:
 	dh_installchangelogs
 	dh_installchangelogs -pglauth v2/CHANGELOG.md
-
-override_dh_installsystemd:
-	dh_installsystemd --no-enable --no-start
